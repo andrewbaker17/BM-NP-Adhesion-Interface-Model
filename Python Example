@@ -1,0 +1,296 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+from numpy import array
+from random import randint
+from mpl_toolkits.mplot3d import Axes3D
+import math
+
+m=500 #matrix rows
+n=500 # matrix columns
+Au_count=[]
+Pt_count=[]
+Au_mod_count=[]
+Pt_mod_count=[]
+Adh_stress=[]
+
+Adh_Au=583.60   #Adhesion stress of pure Au 
+Adh_Pt=1182.58  ##Adhesion stress of pure Pt 
+Adh_Au_mod=0    #Adhesion stress of modified Au 
+Adh_Pt_mod=775.97  #Adhesion stress of modified Pt 
+comp_au = np.array([ 1, 0.9612, 0.9205, 0.9038,0.7588, 0.6648,0.5875,0.3906,0.3367, 0.2337, 0.1461,  0.0752, 0.0514,  0])
+comp_pt=1-comp_au
+expt_data= np.array([583.60, 594.46, 260.73, 272.77, 286.34, 241.64,305.87,509.75,480.22,706.24, 786.60,834.90, 958.71,1182.58])
+
+# Creation of surface and subsurface matrix
+
+for b in comp_au:
+    x = np.zeros((m, n)).astype(tuple)
+    r = np.random.binomial(1, p=b, size=x.shape).astype(tuple)
+    x1 = np.zeros((m, n)).astype(tuple)
+    r1 = np.random.binomial(1, p=b, size=x1.shape).astype(tuple)
+   
+# Identifying the neighboring element of a specific element   
+
+    def get_adjacent_indices(i, j, m, n):
+        adjacent_indices= []
+        if i > 0:
+            adjacent_indices.append(r[i-1][j])
+        if i+1 < m:
+            adjacent_indices.append(r[i+1][j])
+        if j > 0:
+            adjacent_indices.append(r[i][j-1])
+        if j+1 < n:
+            adjacent_indices.append(r[i][j+1])
+        if i > 0:
+            adjacent_indices.append(r1[i-1][j])
+        if i+1 < m:
+            adjacent_indices.append(r1[i+1][j])
+        if j > 0:
+            adjacent_indices.append(r1[i][j-1])
+        if j+1 < n:
+            adjacent_indices.append(r1[i][j+1])
+        return adjacent_indices
+
+    Adh_tot_r = []
+
+# Creating 4 types of atoms - Au, Pt, Au* and Pt* depending on the interaction with neighboring atoms
+
+    for i in range(0,m,1):
+        for j in range(0,n,1):
+            if r[i][j]==1 and all(k == 1 for k in get_adjacent_indices(i, j, m, n)):
+                M=Adh_Au
+                Adh_tot_r.append(M)
+            elif r[i][j]==0 and all(k == 0 for k in get_adjacent_indices(i, j, m, n)): 
+                M=Adh_Pt
+                Adh_tot_r.append(M)
+            elif r[i][j]==1 and 0 in get_adjacent_indices(i, j, m, n): 
+                M=Adh_Au_mod
+                Adh_tot_r.append(M)
+            elif r[i][j]==0 and 1 in get_adjacent_indices(i, j, m, n): 
+                M=Adh_Pt_mod
+                Adh_tot_r.append(M)
+
+# Counting number of each type of atoms - Au, Pt, Au* and Pt* 
+
+    count_Au=0
+    count_Pt=0
+    count_Au_mod=0
+    count_Pt_mod=0
+
+    for l in range(0,len(Adh_tot_r),1):
+        if Adh_tot_r[l]==Adh_Au:
+            count_Au=count_Au+1
+        if Adh_tot_r[l]==Adh_Pt:
+            count_Pt=count_Pt+1
+        if Adh_tot_r[l]==Adh_Au_mod:
+            count_Au_mod=count_Au_mod+1
+        if Adh_tot_r[l]==Adh_Pt_mod:
+            count_Pt_mod=count_Pt_mod+1
+        
+# Determining composition of each type of atoms - Au, Pt, Au* and Pt*    
+
+    Au_count.append(count_Au)
+    Pt_count.append(count_Pt)
+    Au_mod_count.append(count_Au_mod)
+    Pt_mod_count.append(count_Pt_mod)
+    Au_comp  = np.divide(Au_count, len(Adh_tot_r))
+    Pt_comp  = np.divide(Pt_count, len(Adh_tot_r))
+    Au_mod_comp  = np.divide(Au_mod_count, len(Adh_tot_r))
+    Pt_mod_comp  = np.divide(Pt_mod_count, len(Adh_tot_r))
+
+# Calculating RMSE
+
+    sum = 0;    
+    #Loop through the array to calculate avg of elements    
+    for i in range(0, len(Adh_tot_r)):    
+        sum = sum + Adh_tot_r[i];
+        Avg_r=sum/len(Adh_tot_r)
+
+    Adh_stress.append(Avg_r)
+
+subtract = Adh_stress - expt_data
+RMSE = math.sqrt(np.mean(subtract ** 2))
+
+print("Au composition", Au_comp)
+print("Pt composition", Pt_comp)
+print("modified Au composition", Au_mod_comp)
+print("modified Pt composition", Pt_mod_comp)
+print("RMSE:", RMSE)
+
+Cross Validation code:
+import numpy as np
+from scipy.integrate import odeint
+import matplotlib.pyplot as plt
+from PIL import Image
+from numpy import array
+from random import randint
+import pandas as pd
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.model_selection import KFold
+import time
+from scipy.optimize import leastsq
+from lmfit import Minimizer, Parameters, report_fit
+import math
+
+Adh_Au_mod_fitted=[]
+Adh_Pt_mod_fitted=[]
+Adh_Pt_modified=[]
+Adh_Au_modified=[]
+error_test=[]
+
+m=500 # matrix rows
+n=500 # matrix columns
+Adh_Au=583.60 # Adhesion of pure Au
+Adh_Pt=1182.58 # Adhesion of pure Pt
+
+comp_au = np.array([ 1, 0.9612, 0.9205, 0.9038,0.7588, 0.6648,0.5875,0.3906,0.3367, 0.2337, 0.1461,  0.0752, 0.0514,  0])
+comp_pt=1-comp_au
+data= np.array([583.60, 594.46, 260.73, 272.77, 286.34, 241.64,305.87,509.75,480.22,706.24, 786.60,834.90, 958.71,1182.58])
+
+# Composition of each type of atom with bulk composition
+
+Au=np.array([1.0e+0, 6.99e-01, 4.71e-01, 4.03e-01, 8.28e-02, 2.52e-02, 8.38e-03, 2.36e-04, 6.80e-05, 0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00])
+Pt=np.array([0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00, 4.4e-05, 3.84e-04, 1.16e-02, 2.5e-02, 9.21e-02, 2.42e-01, 4.98e-01, 6.22e-01, 1.0e+00])
+Au_mod=np.array([0., 0.261528, 0.447556, 0.50008,  0.674072, 0.640264, 0.578944, 0.390948,0.336204, 0.23484,  0.146336, 0.074664, 0.05154, 0.])
+Pt_mod=np.array([0., 0.039092, 0.080504, 0.096148, 0.243116, 0.334448, 0.412284, 0.597204,0.638704, 0.673008, 0.611648, 0.427084, 0.325992,0.])
+    
+#Divide data in folds
+folds = len(comp_au)
+kf = KFold(n_splits=folds, shuffle=True, random_state=543)
+
+# Creation of test and train sets
+
+ind = np.arange(0,len(data)) 
+ind_train, ind_test = [[] for _ in range(folds)], [[] for _ in range(folds)]
+
+i=0
+for train, test in kf.split(ind):
+    ind_train[i].append(ind[train])
+    ind_test[i].append(ind[test]) 
+    i+=1
+     
+# For train set: Fit parameters to minimize error with the experimental data
+
+for k in range(0,folds,1):
+    LMparams = Parameters()
+    LMparams.add('Adh_Au_mod', value = 0)
+    LMparams.add('Adh_Pt_mod', value = 0)
+
+    def residual(params, comp_au, data):
+        Adh_Au_mod = params['Adh_Au_mod']
+        Adh_Pt_mod = params['Adh_Pt_mod']
+        #print("Adh_Pt1",Adh_Pt1)
+        model=Au[ind_train[k]]*Adh_Au+Pt[ind_train[k]]*Adh_Pt+ Au_mod[ind_train[k]]*Adh_Au_mod+Pt_mod[ind_train[k]]*Adh_Pt_mod
+        return (data[ind_train[k]]-model)
+
+    LMFitmin = Minimizer(residual, LMparams, fcn_args=(comp_au, data))
+    LMFitResult = LMFitmin.minimize(method='least_squares')
+    report_fit(LMFitResult.params)
+    l=LMFitResult.params.valuesdict()
+    Adh_Au_mod_fit= l["Adh_Au_mod"]
+    Adh_Pt_mod_fit= l["Adh_Pt_mod"]
+    Adh_Au_mod_fitted.append(Adh_Au_mod_fit)
+    Adh_Pt_mod_fitted.append(Adh_Pt_mod_fit)
+    
+# For test set: Using fitted parameters obtained from the train set, calculate the error with the experimental data (Validation error)
+
+    Adh_stress_1=[]
+    for b in comp_au[ind_test[k]]:
+            x = np.zeros((m, n)).astype(tuple)
+            r = np.random.binomial(1, p=b, size=x.shape).astype(tuple)
+            x1 = np.zeros((m, n)).astype(tuple)
+            r1 = np.random.binomial(1, p=b, size=x1.shape).astype(tuple)
+       
+            # get adjacent indices of random matrix
+            def get_adjacent_indices(i, j, m, n):
+                adjacent_indices= []
+                if i > 0:
+                    adjacent_indices.append(r[i-1][j])
+                if i+1 < m:
+                    adjacent_indices.append(r[i+1][j])
+                if j > 0:
+                    adjacent_indices.append(r[i][j-1])
+                if j+1 < n:
+                    adjacent_indices.append(r[i][j+1])
+                if i > 0:
+                    adjacent_indices.append(r1[i-1][j])
+                if i+1 < m:
+                    adjacent_indices.append(r1[i+1][j])
+                if j > 0:
+                    adjacent_indices.append(r1[i][j-1])
+                if j+1 < n:
+                    adjacent_indices.append(r1[i][j+1])
+                return adjacent_indices
+ 
+            Adh_tot_r = []
+
+            for i in range(0,m,1):
+                for j in range(0,n,1):
+                    if r[i][j]==1 and all(k == 1 for k in get_adjacent_indices(i, j, m, n)):
+                        M=Adh_Au
+                        Adh_tot_r.append(M)
+                    elif r[i][j]==0 and all(k == 0 for k in get_adjacent_indices(i, j, m, n)): 
+                        M=Adh_Pt
+                        Adh_tot_r.append(M)
+                    elif r[i][j]==1 and 0 in get_adjacent_indices(i, j, m, n): 
+                        M=Adh_Au_mod_fit
+                        Adh_tot_r.append(M)
+                    elif r[i][j]==0 and 1 in get_adjacent_indices(i, j, m, n): 
+                        M=Adh_Pt_mod_fit
+                        Adh_tot_r.append(M)
+
+            #print("Adh_tot_r",Adh_tot_r)
+
+            sum = 0;    
+
+            #Loop through the array to calculate avg of elements    
+            for i in range(0, len(Adh_tot_r)):    
+                sum = sum + Adh_tot_r[i];
+                Avg_r=sum/len(Adh_tot_r)
+
+            Adh_stress_1.append(Avg_r)
+
+    subtract=Adh_stress_1-data[ind_test[k]]
+    ss=subtract**2
+    s=0
+    for i,d in enumerate(ss):
+      s+=d
+    mse= s/len(subtract)
+    rmse= math.sqrt(mse)
+    error_test.append(rmse)
+    print("Validation error",error_test)
+    
+inv=[]
+inv=np.reciprocal(error_test)
+
+s=0
+for i,d in enumerate(inv):
+  s+=d
+print("sum of the inv of error is",s)
+
+# Calculate weights based on validation error (Higher error, lower weights assigned)
+wi=[]
+wi=inv/s
+
+s=0
+for i,d in enumerate(wi):
+  s+=d
+
+# Calculate modified fitting parameters: Fit parameters from each fold is averaged relative to their validation error
+
+Au_mod=Adh_Au_mod_fitted*wi
+Pt_mod=Adh_Pt_mod_fitted*wi
+
+s=0
+for i,d in enumerate(Au_mod):
+  s+=d
+print("Au modified",s)
+
+s=0
+for i,d in enumerate(Pt_mod):
+  s+=d
+print("Pt modified",s)
+
+
+
