@@ -1,0 +1,183 @@
+%% Goal of code: find modified adhesive strength values that minimize the error between the adhesion of the generated surfaces and the experimental adhesion data
+
+%% close all windows
+close
+clear 
+ %% code required for retrieving excel data
+ %% Example of AuPt system from available data for figure 3 a and b
+
+[files, pathname] = uigetfile('*.*', 'Pick an .xlsx file to be plotted',...
+        'MultiSelect','off');
+array = importdata(fullfile(pathname,files)) ;
+
+ %%Read in composition and error for each
+         Composition1 = round(array.data(:,6));
+         Composition1Error = array.data(:,8);
+ %%Read in adhesive strength average and error  
+         AdhesiveStress1 = array.data(:,9);
+         AdhesiveStress1Error = array.data(:,10);
+          
+        
+         
+%%preallocate blank arrays to store values
+%%the number of each type of atom at each percentage
+numAu = zeros(1,100);
+numAuw = zeros(1,100);
+numMw = zeros(1,100);
+numM = zeros(1,100);
+%%value for the total number of atoms
+total = zeros(1,100);
+%%percent of gold and M for composition
+percentAu = zeros(1,100);
+percentM = zeros(1,100);
+
+%%Compositions of each surface layer -> if we are curious about surface
+%%segregation we can put in modified compositions
+SurfaceComp = 0:1:100;
+SubSurfaceComp = 0:1:100;
+
+%% Here we generate 100 surfaces from composition 0-100 M
+for p=1:101
+    %%size of nxn array
+N = 1000;
+ percent1 = SurfaceComp(p);
+ percent2 = SubSurfaceComp(p);
+ div1 = 100/(100-percent1);
+ div2 = 100/(100-percent2);
+A1 = rand(N,N) < 0.5; % a logical array consuming little memory
+A2 = round(rand(N,N));
+N0 = floor((N*N)/div1) ; % specify some exact number of zeros
+SS0 = floor((N*N)/div2) ;
+M = ones(N,N) ; 
+M(1:N0) = 0 ; 
+M(randperm(numel(M))) = M;
+
+SS = ones(N,N) ;
+SS(1:SS0) = 0 ;
+SS(randperm(numel(SS))) = SS;
+%%second matrix of the same dimension to write to
+K = zeros(N,N) ; 
+
+%%nested for loop to do both dimension of the array
+%%0 is pure gold, 1 is weak gold, 2 is weak metal 2, and 3 is pure metal 2
+for j = 3:N-2
+    for i = 3:N-2
+        %%idea is to look at each neighor: up one, down one, left one,
+        %%right one and add up. If originally a metal 2 and the value is
+        %%less than 4 (i.e. not surrounded by metal 2) than it is a "weak
+        %%metal 2" 
+        if M(i+1,j)+M(i,j+1)+M(i-1,j)+M(i,j-1)+SS(i,j)+ SS(i,j+1)+SS(i+1,j)+SS(i+1,j+1)< 8 && M(i,j)==1
+            %%update in identical matrix
+            K(i,j)=2;
+        end
+        %%if completely surrounded, metal 2 behaves like metal 2
+        if M(i+1,j)+M(i,j+1)+M(i-1,j)+M(i,j-1)+SS(i,j)+ SS(i,j+1)+SS(i+1,j)+SS(i+1,j+1)==8 && M(i,j)==1
+            K(i,j)=3;
+        end
+        %%if gold is completely surrounded by gold then it behaves like gold
+        if M(i+1,j)+M(i,j+1)+M(i-1,j)+M(i,j-1)+SS(i,j)+ SS(i,j+1)+SS(i+1,j)+SS(i+1,j+1)==0 && M(i,j)==0
+            K(i,j)=0;
+        end
+        %%if gold is surrouned by any metal 2, then it is weakened
+        if M(i+1,j)+M(i,j+1)+M(i-1,j)+M(i,j-1)+SS(i,j)+ SS(i,j+1)+SS(i+1,j)+SS(i+1,j+1)>0 && M(i,j)==0
+            K(i,j)=1;
+        end
+       
+       
+    end
+end
+%%reset j and i
+j=2;
+i=2;
+%%remove edges that were not calculated
+K(:,N) = [];
+K(N,:) = [];
+K(:,1) = [];
+K(1,:) = [];
+%%calculate number of each type of atom and store in preallocated arrays
+numAu(p) = sum(K(:) == 0);
+numAuw(p) = sum(K(:) == 1);
+numMw(p) = sum(K(:) == 2);
+numM(p) = sum(K(:) == 3);
+total(p) = numAu(p)+numAuw(p)+numM(p)+numMw(p);
+percentAu(p) = (numAu(p)+numAuw(p))*100/(total(p));
+percentM(p) = 100-percentAu(p);
+end
+
+%% at this point 100 surfaces have been made each increases by 1% after the following
+
+%% adhesive strength variables
+asAu = 583.6;
+asM = 1182.58;
+%%here we want to test all combinations from -200 to 800
+asAuw = -500:1:500;
+asMw = 0:1:1000;
+%%we want a matrix to store all of the error values
+RMSE = zeros(1001);
+%%we want an array to store the adhesive strength of each surface
+AdhStrength = zeros(100,1);
+
+tot = total(1);
+%% we want to look at the space of each w adh strength
+for q = 1:1001
+    for r = 1:1001
+        %%get adh strength for 0-100% for assigned values
+        for o = 1:101
+            AdhStrength(o) = numAu(o)*asAu/(tot) + numAuw(o)*asAuw(r)/(tot)+ numMw(o)*asMw(q)/(tot)+numM(o)*asM/(tot);
+        end
+   
+
+%% error analysis
+    % Mean square error, subtract arrays, square the differences, take an
+    % average and then square root it
+    ExpMinusModel = AdhesiveStress1 - AdhStrength(Composition1 +1,:);
+    RMSE(q,r) = sqrt(mean((ExpMinusModel).^2)) ; % Root mean square error   
+    end
+    q;
+end
+
+%%return lowest error value possible
+%%take 10% as error
+minimum = min(min(RMSE));
+minerror = minimum/10;
+modError=round((minimum+minerror),2);
+[x,y]=find(RMSE==minimum);
+RMSE=round(RMSE,2);
+[a,b]=find(RMSE==modError);
+
+%% save the best values
+modAu = asAuw(y);
+modM = asMw(x);
+
+%%save values within 10% of error
+modAuError1 = max(asAuw(b));
+modAuError2 = min(asAuw(b));
+modMError1 = max(asMw(a));
+modMError2 = min(asMw(a));
+
+
+%% plotting best fit with experimental data
+figure 
+hold on
+set(gca,'box','on','fontsize',32,'TickLength',[0.015 0.015],'LineWidth',1,'FontName','Arial');
+plot( Composition1, AdhesiveStress1,  'LineStyle','none','Marker','diamond','MarkerSize',12,'MarkerFaceColor','b','MarkerEdgeColor','b','LineWidth',1) ;
+errorbar( Composition1, AdhesiveStress1, Composition1Error, 'horizontal','LineStyle','none','CapSize',10,'Color','b','LineWidth',2,'HandleVisibility','off');
+errorbar( Composition1, AdhesiveStress1, AdhesiveStress1Error, 'vertical','LineStyle','none','CapSize',10,'Color','b','LineWidth',2,'HandleVisibility','off');
+xlabel('% Second Metal') ;
+ylabel('Adhesive Strength (MPa)') ;
+xlim([0,100])
+ylim([0,1300])
+
+%% plotting best values
+            AdhStrength = numAu*asAu/(tot) + numAuw*modAu/(tot)+ numMw*modM/(tot)+numM*asM/(tot);
+            AdhStrengthE1 = numAu*asAu/(tot) + numAuw*modAuError1/(tot)+ numMw*modMError1/(tot)+numM*asM/(tot);
+            AdhStrengthE2 = numAu*asAu/(tot) + numAuw*modAuError2/(tot)+ numMw*modMError2/(tot)+numM*asM/(tot);
+            
+% composition for %M
+comp = 0:1:100;
+plot(comp,AdhStrength,'b');
+plot(comp,AdhStrengthE1,'b');
+plot(comp,AdhStrengthE2,'b');
+hold on
+
+legend('AuPt')
